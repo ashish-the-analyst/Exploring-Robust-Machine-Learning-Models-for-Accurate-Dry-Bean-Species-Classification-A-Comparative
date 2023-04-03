@@ -1,0 +1,517 @@
+---
+title: "Project One"
+author: Ashish Bhandari
+date: "3/16/2023"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F,warning=F,message=F)
+```
+
+
+```{r}
+# packages and libraries
+# install.packages("MASS", repos = "http://cran.us.r-project.org") 
+# install.packages("e1071", repos = "http://cran.us.r-project.org")
+# install.packages('ggplot2', repos = "http://cran.us.r-project.org" )
+# install.packages('GGally', repos = "http://cran.us.r-project.org" )
+# install.packages("tidyr", repos = "http://cran.us.r-project.org")
+# install.packages("corrplot", repos = "http://cran.us.r-project.org")
+# install.packages("gsubfn", repos = "http://cran.us.r-project.org")
+
+library(tidyr)
+library(ggplot2)
+library(ISLR2)
+library(GGally)
+library(e1071)
+library(class)
+library(MASS)
+library(boot)
+library(nnet)
+library(corrplot)
+library(gsubfn)
+
+```
+
+```{r}
+## Read in initial dataset and exploratory data analysis
+
+# read in 'labeled' csv dataset
+bean.dat=read.csv("~/Project 1/labeled.csv", header = T)
+summary(bean.dat)
+
+# checking for structure of the dataset
+str(bean.dat)
+
+
+# checking any missing data
+missing <- bean.dat%>% is.na() %>% sum()
+cat("\n","Number of missing data = " ,missing)
+
+# remove the X column - identity variable
+bean.dat <- bean.dat[,-1]
+head(bean.dat)
+
+# checking for structure of the dataset
+str(bean.dat)
+
+# Convert "Class" into factors
+bean.dat$Class <- as.factor(bean.dat$Class)
+head(bean.dat)
+
+# changing the 
+
+sprintf(bean.dat$Perimeter, fmt = '%#.3f')
+sprintf(bean.dat$MajorAxisLength, fmt = '%#.3f')
+sprintf(bean.dat$MinorAxisLength, fmt = '%#.3f')
+str(bean.dat)
+
+```
+
+```{r, fig.width=8, fig.height=7}
+## Plot the data
+ggpairs(bean.dat)
+
+corr_plot <- cor(bean.dat[,-8])
+corrplot(corr_plot, method = "number")
+
+plot(Area~Class, data = bean.dat)
+plot(Perimeter~Class, data = bean.dat)
+plot(MajorAxisLength~Class, data = bean.dat)
+plot(MinorAxisLength~Class, data = bean.dat)
+plot(Eccentricity~Class, data = bean.dat)
+plot(ConvexArea~Class, data = bean.dat)
+plot(Extent~Class, data = bean.dat)
+```
+
+```{r}
+## Creating a training and test dataset
+
+#set the seed to 602 for consistency across models
+set.seed(602)
+
+# split into training (70%) and test(30%) data sets
+#get our row numbers
+sample.beans <- sample(1:nrow(bean.dat), size = (.7 * nrow(bean.dat)), replace = FALSE)
+
+# make the training and test dataset
+train.beans <- bean.dat[sample.beans,]
+test.beans  <- bean.dat[-sample.beans,]
+```
+Next we will train different models on our training dataset to see which yields the best result
+1) Multinomial Logistic Regression
+2) LDA
+3) QDA
+4) KNN model
+5) Random Forest
+
+```{r}
+## multinomial logistic regression model
+
+bean_logreg <- multinom(Class ~ ., data = train.beans, maxit = 1000)
+summary(bean_logreg)
+
+#predicting using logistic regression model on the test dataset
+logreg_pred <- predict(bean_logreg, test.beans, type = 'class')
+
+# create frequency table and confusion matrix
+tab_logreg <- table(Predicted=logreg_pred, Actual=test.beans$Class)
+tab_logreg
+
+# calculate the test error rate
+test_error_logreg <- mean(logreg_pred != test.beans$Class)
+cat(" Multinomial Logistic Regression Test Error: ", test_error_logreg)
+```
+
+```{r}
+##  lda model
+library(MASS)
+
+bean.lda <- lda(Class~., data=train.beans)
+bean.lda
+
+# prediction using lda model on the test data set
+lda_pred <- predict(bean.lda, test.beans)$class
+
+# create frequency table and confusion matrix
+tab_lda <- table(Predicted=lda_pred, Actual=test.beans$Class)
+tab_lda
+
+# calculate the test error rate
+test_error_lda <- mean(lda_pred != test.beans$Class)
+cat(" LDA Test Error:  ", test_error_lda)
+#cat("\n Test Accuracy :", sum(diag(tab_lda))/sum(tab_lda))
+```
+
+```{r}
+## qda model
+
+bean.qda <- qda(Class~.,data=train.beans)
+bean.qda
+
+# prediction using qda model on the test data set
+qda_pred <- predict(bean.qda, test.beans)$class
+
+# create frequency table and confusion matrix
+tab_qda <- table(Predicted=qda_pred, Actual=test.beans$Class)
+tab_qda
+
+# calculate the test error rate
+test_error_qda <- mean(qda_pred != test.beans$Class)
+cat(" QDA Test Error:  ", test_error_qda)
+#cat("\n Test Accuracy: ", sum(diag(tab_qda))/sum(tab_qda))
+```
+
+
+```{r}
+## knn model
+library(class)
+
+# This is a helper function used to calculate correct predictions
+CountCorrect <- function(matrix) {
+  correct <- 0
+  for(i in 1:nrow(matrix))
+  {
+    correct <- correct + matrix[i, i]
+  }
+  return(correct)
+}
+
+# Divide the train and test data into predictors (x) and responses (y)
+x.train.beans <- train.beans[, !(names(train.beans) %in% 'Class')]
+y.train.beans <- train.beans[, 'Class']
+x.test.beans <- test.beans[, !(names(test.beans) %in% 'Class')]
+y.test.beans <- test.beans[, 'Class']
+
+# Fit the knn model for all predictors we have available, with k = 1
+knn.beans.1 <- knn(x.train.beans, x.test.beans, y.train.beans, k = 1)
+
+# Show confusion matrix
+tab_k1 <- table(knn.beans.1, y.test.beans)
+tab_k1
+
+# Calculate correct predictions
+correct.beans <- CountCorrect(tab_k1)
+
+# Calculate error rate
+cat("K 1 Test Error: ", format(round(1 - correct.beans / nrow(test.beans), 4), nsmall=4))
+
+# Attempt knn with increasing values of k
+
+# k value of 10
+knn.beans.10 <- knn(x.train.beans, x.test.beans, y.train.beans, k = 10)
+tab_k10 <- table(knn.beans.10, y.test.beans)
+correct.k10 <- CountCorrect(tab_k10)
+cat("K 10 Test Error: ", format(round(1 - correct.k10 / nrow(test.beans), 4), nsmall=4))
+
+# k value of 50
+knn.beans.50 <- knn(x.train.beans, x.test.beans, y.train.beans, k = 50)
+tab_k50 <- table(knn.beans.50, y.test.beans)
+correct.k50 <- CountCorrect(tab_k50)
+cat("K 50 Test Error: ", format(round(1 - correct.k50 / nrow(test.beans), 4), nsmall=4))
+
+# k value of 100
+knn.beans.100 <- knn(x.train.beans, x.test.beans, y.train.beans, k = 100)
+tab_k100 <- table(knn.beans.100, y.test.beans)
+correct.k100 <- CountCorrect(tab_k100)
+cat("K 100 Test Error: ", format(round(1 - correct.k100 / nrow(test.beans), 4), nsmall=4))
+
+# k value fine tuning
+knn.beans.pred <- knn(x.train.beans, x.test.beans, y.train.beans, k = 53)
+tab_k53<- table(knn.beans.pred, y.test.beans)
+tab_k53
+correct.pred <- CountCorrect(tab_k53)
+cat("K 53 Test Error: ", format(round(1 - correct.pred / nrow(test.beans), 4), nsmall=4))
+
+```
+```{r}
+# random forest
+library(randomForest)
+
+# Train a random forest model on the training data
+bean_rf <- randomForest(Class ~ ., data = train.beans)
+
+# prediction using random forest model on the test data set
+rf_pred <- predict(bean_rf, newdata = test.beans)
+
+# create frequency table and confusion matrix
+tab_rf <- table(Predicted=rf_pred, Actual=test.beans$Class)
+tab_rf
+
+# calculate the test error rate
+test_error_rf <- mean(rf_pred != test.beans$Class)
+cat(" Random Forest Test Error: ", test_error_rf)
+#cat("\n Test Accuracy:", sum(diag(tab_rf))/sum(tab_rf))
+
+```
+
+Next, we will need to evaluate the total cost of our mistakes from our model predictions. We will calculate the difference, as well as specifying it by overcharged and undercharged.
+
+```{r}
+# function to create a dataframe with the bean price, weight, and calculate total weight of the
+# bean in pounds
+
+BeanDataFrame <- function(classifications)
+{
+  df <- data.frame(classifications)
+  colnames(df) <- c('predictedBeanType')
+  
+  # Add price of bean in $/lb.
+  df$PoundPrice <- NA
+  df$PoundPrice[which(df$predictedBeanType == 'BOMBAY')] <- 5.56
+  df$PoundPrice[which(df$predictedBeanType == 'CALI')] <- 6.02
+  df$PoundPrice[which(df$predictedBeanType == 'DERMASON')] <- 1.98
+  df$PoundPrice[which(df$predictedBeanType == 'HOROZ')] <- 2.43
+  df$PoundPrice[which(df$predictedBeanType == 'SEKER')] <- 2.72
+  df$PoundPrice[which(df$predictedBeanType == 'SIRA')] <- 5.40
+  
+  # Add average weight of each bean in grams
+  df$AvgGrams <- NA
+  df$AvgGrams[which(df$predictedBeanType == 'BOMBAY')] <- 1.92
+  df$AvgGrams[which(df$predictedBeanType == 'CALI')] <- 0.61
+  df$AvgGrams[which(df$predictedBeanType == 'DERMASON')] <- 0.28
+  df$AvgGrams[which(df$predictedBeanType == 'HOROZ')] <- 0.52
+  df$AvgGrams[which(df$predictedBeanType == 'SEKER')] <- 0.49
+  df$AvgGrams[which(df$predictedBeanType == 'SIRA')] <- 0.38
+  
+  # Calculate total weight of bean in lbs
+  df$Pounds <- NA
+  df$Pounds[which(df$predictedBeanType == 'BOMBAY')] <- 1.92/453.592
+  df$Pounds[which(df$predictedBeanType == 'CALI')] <- 0.61/453.592
+  df$Pounds[which(df$predictedBeanType == 'DERMASON')] <- 0.28/453.592
+  df$Pounds[which(df$predictedBeanType == 'HOROZ')] <- 0.52/453.592
+  df$Pounds[which(df$predictedBeanType == 'SEKER')] <- 0.49/453.592
+  df$Pounds[which(df$predictedBeanType == 'SIRA')] <- 0.38/453.592
+  
+  # Calculate price
+  df$BeanPrice <- NA
+  df$BeanPrice <- df$PoundPrice * df$Pounds
+  
+  return(df)
+}
+
+# Get the actual harvest statistics, create dataframe
+actual.harvest <- BeanDataFrame(y.test.beans)
+
+# Calculate the total price of our actual harvest
+paste('Actual Harvest:', format(sum(actual.harvest$BeanPrice), digits = 5))
+```
+Now that we have the actual harvest price for the test dataset, we will compare it against the predicted price for each model.
+
+First, a function to calculate the over/under charge
+```{r}
+# Use the predicted harvest and actual harvest to determine whether there was an over or under charge
+
+BeanOverUnder <- function(predicted.harvest)
+{
+# Iterate over the data to determine if each bean was overpriced or underpriced
+  for(i in 1:nrow(predicted.harvest))
+  {
+  # If Predicted > Actual
+   if(predicted.harvest[i, c('BeanPrice')] >  predicted.harvest[i, c('ActualBeanPrice')])
+   {
+    # Overcharged = Overcharged + Predicted - Actual
+    overcharged <- overcharged + predicted.harvest[i, c('BeanPrice')] - predicted.harvest[i, c('ActualBeanPrice')]
+   }
+   else
+    {
+    # Overcharged = Overcharged + Actual - Predicted
+    undercharged <- undercharged + predicted.harvest[i, c('ActualBeanPrice')] - predicted.harvest[i, c('BeanPrice')]
+    }
+  }  
+#  output_list<-list(overcharged, undercharged)
+#     return(output_list)
+      return(list(overcharged,undercharged)) 
+}
+```
+
+```{r}
+## MULTINOMIAL PRICE RESULTS AND COST OF MISTAKES
+
+# predictions <- logreg_pred
+
+# How many of each class we predicted
+summary(logreg_pred)
+
+# Create a dataframe to show our calculations
+predicted.harvest <- BeanDataFrame(logreg_pred)
+# Calculate the total price of our predicted harvest
+paste('Actual Harvest:', format(sum(actual.harvest$BeanPrice), digits = 5))
+paste('Predicted Harvest:', format(sum(predicted.harvest$BeanPrice), digits = 5))
+
+# Percentage of predicted vs. actual
+sum(predicted.harvest$BeanPrice) / sum(actual.harvest$BeanPrice) * 100
+
+# Initialize variables
+overcharged <- 0
+undercharged <- 0
+
+# Combine the actual bean prices into the prediction data frame
+predicted.harvest$ActualBeanPrice <- actual.harvest$BeanPrice
+
+# Call function to get over/under charged values
+list[overcharged, undercharged] <- BeanOverUnder(predicted.harvest)
+ 
+# Display results
+print("Multinomial Logistic Regression Over/Under Results")
+paste('Overcharged:', format(overcharged, digits = 5))
+paste('Undercharged:', format(undercharged, digits = 5))
+
+overcharged - undercharged
+```
+
+```{r}
+## LDA PRICE RESULTS AND COST OF MISTAKES
+
+# predictions <- lda_pred
+
+# How many of each class we predicted
+summary(lda_pred)
+
+# Create a dataframe to show our calculations
+predicted.harvest <- BeanDataFrame(lda_pred)
+# Calculate the total price of our predicted harvest
+paste('Actual Harvest:', format(sum(actual.harvest$BeanPrice), digits = 5))
+paste('Predicted Harvest:', format(sum(predicted.harvest$BeanPrice), digits = 5))
+
+# Percentage of predicted vs. actual
+sum(predicted.harvest$BeanPrice) / sum(actual.harvest$BeanPrice) * 100
+
+# Initialize variables
+overcharged <- 0
+undercharged <- 0
+
+# Combine the actual bean prices into the prediction data frame
+predicted.harvest$ActualBeanPrice <- actual.harvest$BeanPrice
+
+# Call function to get over/under charged values
+list[overcharged, undercharged] <- BeanOverUnder(predicted.harvest)
+ 
+# Display results
+print("LDA Over/Under Results")
+paste('Overcharged:', format(overcharged, digits = 5))
+paste('Undercharged:', format(undercharged, digits = 5))
+
+overcharged - undercharged
+```
+
+```{r}
+## QDA PRICE RESULTS AND COST OF MISTAKES
+
+# predictions <- qda_pred
+
+# How many of each class we predicted
+summary(qda_pred)
+
+# Create a dataframe to show our calculations
+predicted.harvest <- BeanDataFrame(qda_pred)
+# Calculate the total price of our predicted harvest
+paste('Actual Harvest:', format(sum(actual.harvest$BeanPrice), digits = 5))
+paste('Predicted Harvest:', format(sum(predicted.harvest$BeanPrice), digits = 5))
+
+# Percentage of predicted vs. actual
+sum(predicted.harvest$BeanPrice) / sum(actual.harvest$BeanPrice) * 100
+
+# Initialize variables
+overcharged <- 0
+undercharged <- 0
+
+# Combine the actual bean prices into the prediction data frame
+predicted.harvest$ActualBeanPrice <- actual.harvest$BeanPrice
+
+# Call function to get over/under charged values
+list[overcharged, undercharged] <- BeanOverUnder(predicted.harvest)
+ 
+# Display results
+print("QDA Over/Under Results")
+paste('Overcharged:', format(overcharged, digits = 5))
+paste('Undercharged:', format(undercharged, digits = 5))
+
+overcharged - undercharged
+```
+```{r}
+## KNN RESULTS AND COST OF MISTAKES
+
+# predictions <- knn.beans.pred
+
+# How many of each class we predicted
+summary(knn.beans.pred)
+
+# Create a dataframe to show our calculations
+predicted.harvest <- BeanDataFrame(knn.beans.pred)
+# Calculate the total price of our predicted harvest
+paste('Predicted Harvest:', format(sum(predicted.harvest$BeanPrice), digits = 5))
+
+# Percentage of predicted vs. actual
+sum(predicted.harvest$BeanPrice) / sum(actual.harvest$BeanPrice) * 100
+
+# Initialize variables
+overcharged <- 0
+undercharged <- 0
+
+# Combine the actual bean prices into the prediction data frame
+predicted.harvest$ActualBeanPrice <- actual.harvest$BeanPrice
+
+# Call function to get over/under charged values
+list[overcharged, undercharged] <- BeanOverUnder(predicted.harvest)
+ 
+# Display results
+print("KNN Over/Under Results")
+paste('Overcharged:', format(overcharged, digits = 5))
+paste('Undercharged:', format(undercharged, digits = 5))
+
+overcharged - undercharged
+```
+```{r}
+## RANDOM FOREST PRICE RESULTS AND COST OF MISTAKES
+
+# predictions <- rf_pred
+
+# How many of each class we predicted
+summary(rf_pred)
+
+# Create a dataframe to show our calculations
+predicted.harvest <- BeanDataFrame(rf_pred)
+# Calculate the total price of our predicted harvest
+paste('Actual Harvest:', format(sum(actual.harvest$BeanPrice), digits = 5))
+paste('Predicted Harvest:', format(sum(predicted.harvest$BeanPrice), digits = 5))
+
+# Percentage of predicted vs. actual
+sum(predicted.harvest$BeanPrice) / sum(actual.harvest$BeanPrice) * 100
+
+# Initialize variables
+overcharged <- 0
+undercharged <- 0
+
+# Combine the actual bean prices into the prediction data frame
+predicted.harvest$ActualBeanPrice <- actual.harvest$BeanPrice
+
+# Call function to get over/under charged values
+list[overcharged, undercharged] <- BeanOverUnder(predicted.harvest)
+ 
+# Display results
+print("Random Forest Over/Under Results")
+paste('Overcharged:', format(overcharged, digits = 5))
+paste('Undercharged:', format(undercharged, digits = 5))
+
+overcharged - undercharged
+```
+
+CODE REFERENCES:
+
+1. “Multinomial Logistic Regression | R Data Analysis Examples.” OARC Stats, https://stats.oarc.ucla.edu/r/dae/multinomial-logistic-regression/. Accessed 20
+March 2023.
+2. Hothorn, Torsten, and Brian S. Everitt. A Handbook of Statistical Analyses 
+Using R, Third Edition. CRC Press, 2014.
+3. Analytics University. “Multinomial Logistic Regression in R | Statistical 
+Models | Multi Class Classification.” YouTube, 30 Aug. 2017, 
+www.youtube.com/watch?v=QvnsTXfPenU.
+4. Linear and Quadratic Discriminant Analysis · UC Business Analytics R 
+Programming Guide. uc-r.github.io/discriminant_analysis.
+5. James, Gareth, et al. An Introduction to Statistical Learning: With 
+Applications in R. Springer Nature, 2021.
+6. “How to Assign From a Function Which Returns More Than One Value?” Stack 
+Overflow, stackoverflow.com/questions/1826519/how-to-assign-from-a-function-
+which-returns-more-than-one-value/15140507#15140507.
