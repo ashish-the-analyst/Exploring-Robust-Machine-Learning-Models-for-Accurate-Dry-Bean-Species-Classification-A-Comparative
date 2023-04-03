@@ -1,6 +1,6 @@
 ---
 title: "Project One"
-author: Ashish Bhandari
+author: 
 date: "3/16/2023"
 output:
   pdf_document: default
