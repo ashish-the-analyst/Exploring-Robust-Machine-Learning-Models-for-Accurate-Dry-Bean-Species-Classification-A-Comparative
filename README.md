@@ -1,1 +1,3 @@
 # Dry-Bean-Classification
+
+We were given the set of data from the paper published by Koklu et al. concerning the separation of bean types at market. There were numerous different types of bean species in this data. Our task was to be able to predict the bean species such that we could calculate the cost of a harvest. This becomes a classification problem where we are predicting a discrete number of bean species. Within this report, we aim to develop several models with the purpose of predicting the price of a harvest which we can then compare to the actual harvest price as a measure of model accuracy. 
